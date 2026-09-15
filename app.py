@@ -8,7 +8,7 @@ import ccxt
 from google import genai
 
 st.set_page_config(
-    page_title="ST-Fin v8 Optimized Scalper",
+    page_title="ST-Fin v8 Clean Pro Scalper",
     page_icon="⚡",
     layout="wide"
 )
@@ -30,7 +30,7 @@ header {visibility: hidden;}
     background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.8);
 }
 .terminal-screen {
-    background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 15px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #34d399; height: 380px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4;
+    background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 15px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #34d399; height: 220px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4;
 }
 .stButton>button {
     font-family: 'JetBrains Mono', monospace; font-weight: bold; border-radius: 6px; height: 45px; width: 100%; transition: 0.2s;
@@ -63,10 +63,9 @@ def save_json(filename, data):
     except Exception:
         pass
 
-# Inisialisasi State dengan Batasan Kapasitas (Capped History)
+# Inisialisasi State (Ledger dimuat penuh tanpa batasan)
 if "ledger" not in st.session_state:
-    loaded = load_json(LEDGER_FILE, [])
-    st.session_state.ledger = loaded[-100:] if len(loaded) > 100 else loaded
+    st.session_state.ledger = load_json(LEDGER_FILE, [])
 
 if "balance_history" not in st.session_state:
     loaded_hist = load_json(HISTORY_FILE, [{"time": time.strftime("%H:%M:%S"), "balance": 10.00}])
@@ -79,21 +78,20 @@ if "balance" not in st.session_state:
         st.session_state.balance = 10.00
 
 if "logs" not in st.session_state:
-    st.session_state.logs = [f"[SYSTEM] ST-Fin v8 Optimized Scanner aktif (History Capped). Memuat {len(st.session_state.ledger)} riwayat."]
+    st.session_state.logs = [f"[SYSTEM] ST-Fin v8 Clean Scalper aktif. Memuat {len(st.session_state.ledger)} total riwayat eksperimen."]
 if "is_running" not in st.session_state:
     st.session_state.is_running = False
 
 def add_log(msg):
     st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] {msg}")
-    # Batasi maksimal 50 log di memori
-    if len(st.session_state.logs) > 50:
+    # Intelligent feed dibatasi hanya 5 log terbaru agar rapi
+    if len(st.session_state.logs) > 5:
         st.session_state.logs.pop()
 
 def update_balance(new_balance):
     st.session_state.balance = round(new_balance, 2)
     current_time = time.strftime("%H:%M:%S")
     st.session_state.balance_history.append({"time": current_time, "balance": st.session_state.balance})
-    # Batasi riwayat grafik maksimal 100 titik data
     if len(st.session_state.balance_history) > 100:
         st.session_state.balance_history = st.session_state.balance_history[-100:]
     save_json(HISTORY_FILE, st.session_state.balance_history)
@@ -138,7 +136,7 @@ def scan_all_coins_market():
                 })
         
         valid_candidates = sorted(valid_candidates, key=lambda x: abs(x['change_24h']), reverse=True)
-        target_pool = valid_candidates[:12] # Ambil sampel 12 koin teraktif agar cepat & ringan
+        target_pool = valid_candidates[:12]
         
         scanned_data = []
         for item in target_pool:
@@ -180,7 +178,7 @@ def scan_all_coins_market():
 # --- UI HEADER ---
 st.markdown("""
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 15px; margin-bottom: 20px;">
-        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">⚡ ST-Fin v8 // Optimized All-Coin Scalper</h2>
+        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">⚡ ST-Fin v8 // Clean Universal Scalper</h2>
     </div>
 """, unsafe_allow_html=True)
 
@@ -204,7 +202,7 @@ with m2:
 with m3:
     st.markdown(f"""
         <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
-            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Ledger History (Max 100)</div>
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Total Experiment Ledger</div>
             <div style="font-size: 22px; font-weight: bold; color: #f8fafc; margin-top: 5px;">{len(st.session_state.ledger)}</div>
         </div>
     """, unsafe_allow_html=True)
@@ -221,14 +219,14 @@ st.markdown("""
 if st.session_state.balance_history:
     df_history = pd.DataFrame(st.session_state.balance_history)
     df_history.set_index("time", inplace=True)
-    st.line_chart(df_history, color="#38bdf8", height=220)
+    st.line_chart(df_history, color="#38bdf8", height=200)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # --- KONTROL UTAMA ---
 col_ctrl1, col_ctrl2 = st.columns(2)
 with col_ctrl1:
-    if st.button("🚀 JALANKAN OPTIMIZED SCANNER", use_container_width=True, type="primary", disabled=st.session_state.is_running):
+    if st.button("🚀 JALANKAN UNIVERSAL SCANNER", use_container_width=True, type="primary", disabled=st.session_state.is_running):
         st.session_state.is_running = True
         st.rerun()
 with col_ctrl2:
@@ -238,31 +236,38 @@ with col_ctrl2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- LAYOUT UTAMA (LEDGER & TERMINAL) ---
+# --- LAYOUT UTAMA (TABEL SEDERHANA & FEED RINGKAS) ---
 grid_left, grid_right = st.columns(2)
 
 with grid_left:
     st.markdown("""
         <div class="terminal-panel">
-            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">📊 Capped Experiment Ledger (Max 100 Terakhir)</h3>
+            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">📊 Experiment Ledger (Full History)</h3>
         </div>
     """, unsafe_allow_html=True)
     if st.session_state.ledger:
-        st.dataframe(st.session_state.ledger, use_container_width=True, height=350)
+        # Format tabel agar lebih simpel, bersih, dan mudah dibaca
+        df_ledger = pd.DataFrame(st.session_state.ledger)
+        simple_cols = ["timestamp", "token", "entry_price", "size", "status"]
+        available_cols = [c for c in simple_cols if c in df_ledger.columns]
+        
+        # Tampilkan tabel ringkas yang elegan
+        st.dataframe(df_ledger[available_cols].iloc[::-1], use_container_width=True, height=280)
     else:
         st.info("Belum ada data pembelajaran tercatat.")
 
 with grid_right:
     st.markdown("""
         <div class="terminal-panel">
-            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">💻 AI Intelligence Feed (Max 50 Log)</h3>
+            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">💻 AI Intelligence Feed (Live 5 Log)</h3>
         </div>
     """, unsafe_allow_html=True)
     
-    log_text = "\n".join(st.session_state.logs)
+    # Hanya menampilkan 5 log terakhir agar sangat ringkas
+    log_text = "\n".join(st.session_state.logs[:5])
     st.markdown(f'<div class="terminal-screen">{log_text}</div>', unsafe_allow_html=True)
 
-# --- SIKLUS OTONOM OPTIMIZED ---
+# --- SIKLUS OTONOM ---
 if st.session_state.is_running:
     add_log("Memulai siklus pemindaian universal dan penyaringan anti-scam...")
     
@@ -277,7 +282,7 @@ if st.session_state.is_running:
         whale_imb = item['whale_imbalance_pct']
         change = item['change_24h']
         
-        add_log(f"Check {symbol} | Change: {change}% | RSI: {tech['rsi']} | Whale Imbalance: {whale_imb}%")
+        add_log(f"Check {symbol} | Chg: {change}% | RSI: {tech['rsi']} | Whale: {whale_imb}%")
         
         decision = "SKIP"
         reasoning = "Kandidat tidak lolos filter ketat anti-scam atau momentum 1m belum matang."
@@ -313,7 +318,7 @@ if st.session_state.is_running:
             except Exception:
                 add_log("Warning: Batas API tercapai, mengaktifkan pengaman darurat.")
 
-        add_log(f"Verdict {symbol} -> {decision} | {reasoning}")
+        add_log(f"Verdict {symbol} -> {decision}")
 
         if decision == "LONG ENTRY" and st.session_state.balance >= 1.0:
             position_size = round(st.session_state.balance * 0.15, 2)
@@ -323,7 +328,6 @@ if st.session_state.is_running:
             trade_record = {
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "token": symbol,
-                "chain": "Universal Optimized Network",
                 "entry_price": item['current_price'],
                 "size": position_size,
                 "status": "ACTIVE_PAPER_TRADE",
@@ -331,12 +335,9 @@ if st.session_state.is_running:
             }
             st.session_state.ledger.append(trade_record)
             
-            # Batasi ledger maksimal 100 riwayat agar file JSON tidak membengkak
-            if len(st.session_state.ledger) > 100:
-                st.session_state.ledger = st.session_state.ledger[-100:]
-                
+            # Ledger disimpan penuh tanpa batasan ke file JSON
             save_json(LEDGER_FILE, st.session_state.ledger)
-            add_log(f"Ledger: Posisi {symbol} tercatat (Total: {len(st.session_state.ledger)})")
+            add_log(f"Ledger: Posisi {symbol} tersimpan permanen.")
 
         time.sleep(1.0)
     
