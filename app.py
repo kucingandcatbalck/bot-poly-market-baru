@@ -3,32 +3,34 @@ import os
 import json
 import time
 import pandas as pd
+import numpy as np
 import ccxt
 from google import genai
 
 st.set_page_config(
-    page_title="ST-Fin v8 Universal All-Coin Scalping Terminal",
+    page_title="ST-Fin v8 Pro Quantitative Scalper",
     page_icon="⚡",
     layout="wide"
 )
 
+# Kustomisasi CSS Terminal Pro-Trader
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
 html, body, [class*="css"] {
     font-family: 'JetBrains Mono', monospace;
-    background-color: #05070b;
+    background-color: #030712;
     color: #e2e8f0;
 }
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
-.stApp { background: #05070b; padding: 0.5rem 1rem; }
+.stApp { background: #030712; padding: 0.5rem 1rem; }
 .terminal-panel {
-    background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.8);
 }
 .terminal-screen {
-    background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 15px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #34d399; height: 320px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4;
+    background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 15px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #34d399; height: 380px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4;
 }
 .stButton>button {
     font-family: 'JetBrains Mono', monospace; font-weight: bold; border-radius: 6px; height: 45px; width: 100%; transition: 0.2s;
@@ -74,7 +76,7 @@ if "balance" not in st.session_state:
         st.session_state.balance = 10.00
 
 if "logs" not in st.session_state:
-    st.session_state.logs = [f"[SYSTEM] Universal All-Coin Scanner aktif. Memuat {len(st.session_state.ledger)} riwayat pembelajaran[cite: 1]."]
+    st.session_state.logs = [f"[SYSTEM] ST-Fin v8 Multi-Factor & Whale Tracker aktif. Memuat {len(st.session_state.ledger)} riwayat eksperimen[cite: 1]."]
 if "is_running" not in st.session_state:
     st.session_state.is_running = False
 
@@ -84,53 +86,91 @@ def update_balance(new_balance):
     st.session_state.balance_history.append({"time": current_time, "balance": st.session_state.balance})
     save_json(HISTORY_FILE, st.session_state.balance_history)
 
-def fetch_all_coins_market_data():
-    """Memuat seluruh koin/pair berbasis USDT secara dinamis dari bursa via CCXT[cite: 1]"""
+def calculate_technical_indicators(df):
+    """Menghitung indikator teknikal dasar (RSI, MACD, EMA) secara matematis"""
+    close = df['close']
+    # RSI 14
+    delta = close.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    # EMA 9 & EMA 21
+    ema9 = close.ewm(span=9, adjust=False).mean()
+    ema21 = close.ewm(span=21, adjust=False).mean()
+    
+    return {
+        "rsi": round(float(rsi.iloc[-1]), 2) if not np.isnan(rsi.iloc[-1]) else 50.0,
+        "ema9": round(float(ema9.iloc[-1]), 4),
+        "ema21": round(float(ema21.iloc[-1]), 4)
+    }
+
+def fetch_deep_market_data():
+    """Memindai koin, menghitung indikator teknikal, dan mengambil data Whale Order Book via CCXT[cite: 1]"""
     try:
         exchange = ccxt.binance({'enableRateLimit': True})
         exchange.load_markets()
         
-        # Ambil semua simbol market yang aktif dan berpasangan dengan USDT (Spot)
-        usdt_symbols = [symbol for symbol in exchange.symbols if symbol.endswith('/USDT') and ':' not in symbol]
-        
-        # Ambil ticker untuk semua simbol tersebut guna memfilter berdasarkan volume transaksi tertinggi (cocok untuk scalping)
+        usdt_symbols = [s for s in exchange.symbols if s.endswith('/USDT') and ':' not in s]
         tickers = exchange.fetch_tickers(usdt_symbols)
         
-        market_list = []
-        for symbol, t in tickers.items():
-            quote_vol = t.get('quoteVolume', 0.0) or 0.0
-            price = t.get('last', 0.0) or 0.0
-            change = t.get('percentage', 0.0) or 0.0
-            if price > 0 and quote_vol > 100000: # Filter koin dengan likuiditas sehat
-                market_list.append({
-                    "symbol": symbol,
-                    "price": price,
-                    "change": change,
-                    "volume": quote_vol
-                })
+        # Saring top 15 koin paling likuid
+        ranked_symbols = sorted(
+            [s for s, t in tickers.items() if (t.get('quoteVolume', 0.0) or 0.0) > 300000],
+            key=lambda x: tickers[x].get('quoteVolume', 0.0),
+            reverse=True
+        )[:15]
         
-        # Urutkan berdasarkan volume transaksi terbesar untuk dipindai prioritas oleh AI
-        market_list = sorted(market_list, key=lambda x: x['volume'], reverse=True)
-        return market_list[:15] # Ambil top 15 koin paling liquid untuk siklus pemindaian otonom
-    except Exception as e:
-        # Fallback pengaman jika jaringan bursa mengalami pembatasan rate-limit ketat
+        deep_data = []
+        for symbol in ranked_symbols:
+            try:
+                # Tarik candle 1m
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=30)
+                if len(ohlcv) >= 25:
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    tech = calculate_technical_indicators(df)
+                    
+                    # Tarik Order Book untuk mendeteksi Whale Walls / Imbalance
+                    orderbook = exchange.fetch_order_book(symbol, limit=10)
+                    bids_vol = sum([b[1] for b in orderbook['bids']])
+                    asks_vol = sum([a[1] for a in orderbook['asks']])
+                    whale_imbalance = round((bids_vol / (bids_vol + asks_vol)) * 100, 2) if (bids_vol + asks_vol) > 0 else 50.0
+                    
+                    deep_data.append({
+                        "symbol": symbol,
+                        "current_price": float(df['close'].iloc[-1]),
+                        "indicators": tech,
+                        "whale_imbalance_pct": whale_imbalance, # >50 artinya tekanan whale buy mendominasi
+                        "recent_volume": float(df['volume'].iloc[-1])
+                    })
+            except Exception:
+                continue
+        return deep_data
+    except Exception:
         return [
-            {"symbol": "BTC/USDT", "price": 64200.0, "change": 1.5, "volume": 15000000},
-            {"symbol": "ETH/USDT", "price": 3450.0, "change": 2.1, "volume": 8000000},
-            {"symbol": "SOL/USDT", "price": 145.20, "change": 4.5, "volume": 5000000}
+            {
+                "symbol": "BTC/USDT",
+                "current_price": 64200.0,
+                "indicators": {"rsi": 55.4, "ema9": 64190.0, "ema21": 64150.0},
+                "whale_imbalance_pct": 58.5,
+                "recent_volume": 14.2
+            }
         ]
 
+# --- UI HEADER ---
 st.markdown("""
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 15px; margin-bottom: 20px;">
-        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">⚡ ST-Fin v8 // Universal All-Coin Scalping Terminal</h2>
+        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">⚡ ST-Fin v8 // Multi-Factor & Whale Tracker Scalper</h2>
     </div>
 """, unsafe_allow_html=True)
 
+# --- METRIK UTAMA ---
 m1, m2, m3 = st.columns(3)
 with m1:
     st.markdown(f"""
         <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
-            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Portofolio (Target Modal $10)</div>
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Portofolio (Modal $10 Strict Protection)</div>
             <div style="font-size: 22px; font-weight: bold; color: #38bdf8; margin-top: 5px;">${st.session_state.balance:.2f}</div>
         </div>
     """, unsafe_allow_html=True)
@@ -145,13 +185,14 @@ with m2:
 with m3:
     st.markdown(f"""
         <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
-            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Total Experiment Ledger</div>
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Total Experiment Ledger (Lengkap)</div>
             <div style="font-size: 22px; font-weight: bold; color: #f8fafc; margin-top: 5px;">{len(st.session_state.ledger)}</div>
         </div>
     """, unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
+# --- GRAFIK LIVE PORTOS ---
 st.markdown("""
     <div class="terminal-panel">
         <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">📈 Live Portfolio Balance Chart ($ USD)</h3>
@@ -165,9 +206,10 @@ if st.session_state.balance_history:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
+# --- KONTROL UTAMA ---
 col_ctrl1, col_ctrl2 = st.columns(2)
 with col_ctrl1:
-    if st.button("🚀 JALANKAN BOT", use_container_width=True, type="primary", disabled=st.session_state.is_running):
+    if st.button("🚀 JALANKAN BOT (DEEP QUANT SCAN)", use_container_width=True, type="primary", disabled=st.session_state.is_running):
         st.session_state.is_running = True
         st.rerun()
 with col_ctrl2:
@@ -177,56 +219,70 @@ with col_ctrl2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
+# --- LAYOUT UTAMA (LEDGER & TERMINAL) ---
 grid_left, grid_right = st.columns(2)
 
 with grid_left:
     st.markdown("""
         <div class="terminal-panel">
-            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">📊 Live Experiment Ledger (Persistent)</h3>
+            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">📊 Full Experiment Ledger (Semua Riwayat Tersimpan)</h3>
         </div>
     """, unsafe_allow_html=True)
     if st.session_state.ledger:
-        st.dataframe(st.session_state.ledger[-10:], use_container_width=True)
+        st.dataframe(st.session_state.ledger, use_container_width=True, height=400)
     else:
         st.info("Belum ada data pembelajaran tercatat.")
 
 with grid_right:
     st.markdown("""
         <div class="terminal-panel">
-            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">💻 AI Decision Terminal Feed (All-Coin Network Scanner)</h3>
+            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">💻 AI Multi-Factor & Whale Intelligence Feed</h3>
         </div>
     """, unsafe_allow_html=True)
     
     log_text = "\n".join(st.session_state.logs)
     st.markdown(f'<div class="terminal-screen">{log_text}</div>', unsafe_allow_html=True)
 
+# --- SIKLUS OTONOM MULTI-FAKTOR & WHALE TRACKER ---
 if st.session_state.is_running:
-    st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [SCAN] Memuat daftar seluruh koin aktif dan memindai peluang scalping lintas jaringan via CCXT[cite: 1]...")
+    st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [QUANT SCAN] Menganalisis indikator teknikal & order book whale footprint lintas koin[cite: 1]...")
     
-    all_coins = fetch_all_coins_market_data()
+    market_data = fetch_deep_market_data()
 
-    for token in all_coins:
+    for item in market_data:
         if not st.session_state.is_running:
             break
         
-        st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [ANALYZE] Evaluasi struktur {token['symbol']} | Harga: ${token['price']} | Vol: ${token['volume']:,.0f}")
+        symbol = item['symbol']
+        tech = item['indicators']
+        whale_imb = item['whale_imbalance_pct']
         
-        decision = "LONG ENTRY"
-        reasoning = f"Analisis geometri scalping: {token['symbol']} menembus ambang batas sudut ceiling dengan konfirmasi volume likuiditas tinggi."
+        st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [DATA] {symbol} | RSI: {tech['rsi']} | Whale Imbalance: {whale_imb}% | Price: ${item['current_price']}")
+        
+        decision = "SKIP"
+        reasoning = "Indikator teknikal atau tekanan whale belum memenuhi konfirmasi matriks risiko."
         
         if ai_client:
             prompt = f"""
-            Anda adalah inti kecerdasan buatan otonom untuk sistem ST-Fin v8 (Smart Trader, Final Episode)[cite: 1].
-            Lakukan analisis scalping universal untuk koin ini:
-            - Signal mode: Live[cite: 1]
-            - Variabel Leg A: Ceil angle[cite: 1]
-            - Normalize lens: ON[cite: 1]
-            - Pair: {token['symbol']} | Harga: ${token['price']} | Perubahan 24j: {token['change']}% | Volume: ${token['volume']}
+            Anda adalah inti kecerdasan buatan kuantitatif tingkat maksimal untuk sistem ST-Fin v8 (Smart Trader, Final Episode)[cite: 1].
+            Lakukan analisis multi-faktor yang SANGAT KETAT untuk scalping 1 menit guna melindungi modal mikro $10 pengguna dari risiko kerugian.
+            
+            Faktor yang Dianalisis:
+            - Pair: {symbol}
+            - Harga Saat Ini: ${item['current_price']}
+            - Indikator Teknikal (1m): RSI = {tech['rsi']}, EMA 9 = {tech['ema9']}, EMA 21 = {tech['ema21']}
+            - Whale Footprint / Order Book Imbalance: {whale_imb}% (Jika >55%, tekanan beli whale mendominasi dinding order book)
+            - Kerangka Geometri: ST-Fin v8 (Ceil angle & Normalize lens ON)[cite: 1]
+            
+            Aturan Keputusan:
+            - HANYA berikan "LONG ENTRY" jika indikator RSI berada di zona sehat (40-70), EMA 9 di atas EMA 21 (tren mikro naik), DAN Whale Imbalance di atas 52% (menunjukkan akumulasi institusi/whale).
+            - Jika salah satu kondisi tidak terpenuhi, wajibkan keputusan "SKIP" untuk menghindari risiko bakar saldo.
             
             Respons HARUS berupa JSON murni tanpa teks tambahan:
             {{
                 "decision": "LONG ENTRY" atau "SKIP",
-                "reasoning": "Alasan singkat scalping dan manajemen risiko..."
+                "confidence": "Tinggi/Sedang",
+                "reasoning": "Penalaran mendalam berdasarkan teknikal, whale footprint, dan geometri..."
             }}
             """
             try:
@@ -239,27 +295,27 @@ if st.session_state.is_running:
                 decision = res_json.get("decision", "SKIP")
                 reasoning = res_json.get("reasoning", reasoning)
             except Exception:
-                st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [WARNING] Batas API tercapai, mengaktifkan geometri fallback cerdas.")
+                st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [WARNING] Batas API tercapai, mengaktifkan pengaman darurat.")
 
-        st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [AI VERDICT] {token['symbol']} -> {decision} | {reasoning}")
+        st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [AI VERDICT] {symbol} -> {decision} | {reasoning}")
 
         if decision == "LONG ENTRY" and st.session_state.balance >= 1.0:
-            position_size = round(st.session_state.balance * 0.20, 2)
+            position_size = round(st.session_state.balance * 0.15, 2)
             new_bal = st.session_state.balance - position_size
             update_balance(new_bal)
             
             trade_record = {
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "token": token['symbol'],
-                "chain": "Universal Spot Network",
-                "entry_price": token['price'],
+                "token": symbol,
+                "chain": "Multi-Factor Whale Network",
+                "entry_price": item['current_price'],
                 "size": position_size,
                 "status": "ACTIVE_PAPER_TRADE",
-                "strategy": "All-Coin Scalping & Recovery"
+                "reasoning": reasoning
             }
             st.session_state.ledger.append(trade_record)
             save_json(LEDGER_FILE, st.session_state.ledger)
-            st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [LEDGER] Data pembelajaran universal disimpan permanen untuk {token['symbol']}[cite: 1].")
+            st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [LEDGER] Sinyal multi-faktor terekam permanen (Total Ledger: {len(st.session_state.ledger)})[cite: 1].")
 
         time.sleep(1.5)
     
