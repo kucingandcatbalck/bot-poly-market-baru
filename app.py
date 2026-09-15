@@ -123,7 +123,7 @@ with m1:
         </div>
     """, unsafe_allow_html=True)
 with m2:
-    active_count = len([x for x in st.session_state.ledger if x.get("status"] == "ACTIVE_PAPER_TRADE"])
+    active_count = len([x for x in st.session_state.ledger if x.get("status") == "ACTIVE_PAPER_TRADE"])
     st.markdown(f"""
         <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
             <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Posisi Aktif</div>
@@ -189,7 +189,7 @@ with grid_right:
     st.markdown(f'<div class="terminal-screen">{log_text}</div>', unsafe_allow_html=True)
 
 if st.session_state.is_running:
-    st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [SCAN] Memindai peluang profit dan evaluasi recovery lintas chain via CCXT...")
+    st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [SCAN] Memindai peluang profit dan evaluasi recovery lintas chain via CCXT[cite: 1]...")
     
     live_tokens = fetch_live_market_data()
 
