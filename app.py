@@ -4,14 +4,71 @@ import json
 import time
 from google import genai
 
-# Konfigurasi Halaman Streamlit
+# Konfigurasi Halaman & Layout Lebar
 st.set_page_config(
-    page_title="ST-Fin Autonomous Cloud Terminal",
-    page_icon="🚀",
+    page_title="ST-Fin v8 Autonomous Cloud Terminal",
+    page_icon="⚡",
     layout="wide"
 )
 
-# Pengambilan API Key (Mendukung Streamlit Secrets di Cloud atau Environment Variable)
+# Kustomisasi CSS ala Pro-Trader Terminal (Cyberpunk / Alpha Scanner Style)
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'JetBrains Mono', monospace;
+    background-color: #05070b;
+    color: #e2e8f0;
+}
+
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+.stApp {
+    background: #05070b;
+    padding: 0.5rem 1rem;
+}
+
+/* Panel Terminal Container */
+.terminal-panel {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+}
+
+/* Kotak Terminal Log */
+.terminal-screen {
+    background: #020617;
+    border: 1px solid #1e293b;
+    border-radius: 6px;
+    padding: 15px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #34d399;
+    height: 320px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    line-height: 1.4;
+}
+
+/* Tombol Kustom */
+.stButton>button {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: bold;
+    border-radius: 6px;
+    height: 45px;
+    width: 100%;
+    transition: 0.2s;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Pengambilan API Key (Streamlit Secrets / Environment Variable)
 api_key = os.getenv("GEMINI_API_KEY", "")
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -36,61 +93,91 @@ def save_ledger(ledger_data):
     except Exception:
         pass
 
-# Inisialisasi Session State Streamlit untuk Persistent Memory
+# Inisialisasi Session State
 if "balance" not in st.session_state:
-    st.session_state.balance = 10.00  # Target modal awal riil Anda ($10)
+    st.session_state.balance = 10.00  # Target modal riil awal ($10)
 if "ledger" not in st.session_state:
     st.session_state.ledger = load_ledger()
 if "logs" not in st.session_state:
-    st.session_state.logs = [f"ST-Fin v8 Autonomous Engine siap di Streamlit Cloud. Memuat {len(st.session_state.ledger)} riwayat eksperimen[cite: 1]."]
+    st.session_state.logs = [f"[SYSTEM] ST-Fin v8 Autonomous Engine siap. Memuat {len(st.session_state.ledger)} riwayat eksperimen[cite: 1]."]
 if "is_running" not in st.session_state:
     st.session_state.is_running = False
 
-# --- UI HEADER ---
-st.title("🚀 ST-Fin v8 Autonomous AI Trading Terminal")
-st.markdown("Terminal otonom cloud berbasis spesifikasi geometri pasar ST-Fin[cite: 1] dengan manajemen risiko modal mikro **$10.00**.")
+# --- HEADER TERMINAL ---
+st.markdown("""
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 15px; margin-bottom: 20px;">
+        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">⚡ ST-Fin v8 // Autonomous Alpha Terminal</h2>
+    </div>
+""", unsafe_allow_html=True)
 
-# --- METRICS GRID ---
-col1, col2, col3 = st.columns(3)
-col1.metric("Portofolio (Target Modal $10)", f"${st.session_state.balance:.2f}")
-col2.metric("Posisi Aktif", len([x for x in st.session_state.ledger if x.get("status") == "ACTIVE_PAPER_TRADE"]))
-col3.metric("Total Eksperimen Ledger", len(st.session_state.ledger))
+# --- METRIK UTAMA (TAMPILAN PRO-TRADER) ---
+m1, m2, m3 = st.columns(3)
+with m1:
+    st.markdown(f"""
+        <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Portofolio (Target Modal $10)</div>
+            <div style="font-size: 22px; font-weight: bold; color: #38bdf8; margin-top: 5px;">${st.session_state.balance:.2f}</div>
+        </div>
+    """, unsafe_allow_html=True)
+with m2:
+    active_count = len([x for x in st.session_state.ledger if x.get("status") == "ACTIVE_PAPER_TRADE"])
+    st.markdown(f"""
+        <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Posisi Aktif</div>
+            <div style="font-size: 22px; font-weight: bold; color: #34d399; margin-top: 5px;">{active_count}</div>
+        </div>
+    """, unsafe_allow_html=True)
+with m3:
+    st.markdown(f"""
+        <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Total Experiment Ledger</div>
+            <div style="font-size: 22px; font-weight: bold; color: #f8fafc; margin-top: 5px;">{len(st.session_state.ledger)}</div>
+        </div>
+    """, unsafe_allow_html=True)
 
-st.divider()
+st.markdown("<br>", unsafe_allow_html=True)
 
-# --- KONTROL UTAMA (HANYA JALANKAN & MATIKAN BOT) ---
-c1, c2 = st.columns(2)
-with c1:
-    if st.button("🟢 Jalankan Bot", use_container_width=True, disabled=st.session_state.is_running):
+# --- KONTROL UTAMA (HANYA DUA TOMBOL) ---
+col_ctrl1, col_ctrl2 = st.columns(2)
+with col_ctrl1:
+    if st.button("🚀 JALANKAN BOT", use_container_width=True, type="primary", disabled=st.session_state.is_running):
         st.session_state.is_running = True
         st.rerun()
-with c2:
-    if st.button("🔴 Matikan Bot", use_container_width=True, disabled=not st.session_state.is_running):
+with col_ctrl2:
+    if st.button("🛑 MATIKAN BOT", use_container_width=True, type="secondary", disabled=not st.session_state.is_running):
         st.session_state.is_running = False
         st.rerun()
 
-st.markdown("")
+st.markdown("<br>", unsafe_allow_html=True)
 
-# --- LAYOUT UTAMA (LEDGER & TERMINAL) ---
-left_col, right_col = st.columns(2)
+# --- LAYOUT GRID UTAMA (LEDGER & TERMINAL) ---
+grid_left, grid_right = st.columns(2)
 
-with left_col:
-    st.subheader("📊 Experiment Ledger (Riwayat Posisi)")
+with grid_left:
+    st.markdown("""
+        <div class="terminal-panel">
+            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">📊 Live Experiment Ledger</h3>
+        </div>
+    """, unsafe_allow_html=True)
     if st.session_state.ledger:
         st.dataframe(st.session_state.ledger[-10:], use_container_width=True)
     else:
         st.info("Belum ada data eksperimen tercatat.")
 
-with right_col:
-    st.subheader("💻 Terminal Log Keputusan AI (Real-time)")
-    log_container = st.container(height=350)
-    with log_container:
-        for log in st.session_state.logs:
-            st.text(log)
+with grid_right:
+    st.markdown("""
+        <div class="terminal-panel">
+            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">💻 AI Decision Terminal Feed</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Render kotak terminal log
+    log_text = "\n".join(st.session_state.logs)
+    st.markdown(f'<div class="terminal-screen">{log_text}</div>', unsafe_allow_html=True)
 
 # --- SIKLUS OTONOM PEMBELAJARAN AI ---
 if st.session_state.is_running:
-    st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [SYSTEM] Siklus pemindaian pasar otonom dimulai[cite: 1]...")
+    st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [SYSTEM] Memulai siklus pemindaian pasar otonom tingkat lanjut[cite: 1]...")
     
     target_tokens = [
         {"name": "Aura AI", "symbol": "AURA", "chain": "Solana", "liquidity": "$84,200", "price": 0.0042},
@@ -116,7 +203,7 @@ if st.session_state.is_running:
             - Normalize lens: ON[cite: 1]
             - Token: {token['name']} ({token['symbol']}) | Chain: {token['chain']} | Harga: ${token['price']}
             
-            Respons HARUS berupa JSON murni:
+            Respons HARUS berupa JSON murni tanpa teks tambahan:
             {{
                 "decision": "LONG ENTRY" atau "SKIP",
                 "reasoning": "Alasan singkat..."
@@ -154,6 +241,6 @@ if st.session_state.is_running:
 
         time.sleep(2)
     
-    # Memicu penyegaran otomatis halaman agar antarmuka terus hidup saat bot aktif
+    # Refresh otomatis agar terminal dan metrik terus menyala secara live
     time.sleep(1)
     st.rerun()
