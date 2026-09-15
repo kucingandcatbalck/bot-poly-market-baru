@@ -8,7 +8,7 @@ import ccxt
 from google import genai
 
 st.set_page_config(
-    page_title="ST-Fin v8 Universal All-Coin Anti-Scam Scalper",
+    page_title="ST-Fin v8 Optimized Scalper",
     page_icon="⚡",
     layout="wide"
 )
@@ -63,11 +63,14 @@ def save_json(filename, data):
     except Exception:
         pass
 
+# Inisialisasi State dengan Batasan Kapasitas (Capped History)
 if "ledger" not in st.session_state:
-    st.session_state.ledger = load_json(LEDGER_FILE, [])
+    loaded = load_json(LEDGER_FILE, [])
+    st.session_state.ledger = loaded[-100:] if len(loaded) > 100 else loaded
 
 if "balance_history" not in st.session_state:
-    st.session_state.balance_history = load_json(HISTORY_FILE, [{"time": time.strftime("%H:%M:%S"), "balance": 10.00}])
+    loaded_hist = load_json(HISTORY_FILE, [{"time": time.strftime("%H:%M:%S"), "balance": 10.00}])
+    st.session_state.balance_history = loaded_hist[-100:] if len(loaded_hist) > 100 else loaded_hist
 
 if "balance" not in st.session_state:
     if st.session_state.balance_history:
@@ -76,14 +79,23 @@ if "balance" not in st.session_state:
         st.session_state.balance = 10.00
 
 if "logs" not in st.session_state:
-    st.session_state.logs = [f"[SYSTEM] ST-Fin v8 All-Coin Anti-Scam Scanner aktif. Memuat {len(st.session_state.ledger)} riwayat eksperimen[cite: 1]."]
+    st.session_state.logs = [f"[SYSTEM] ST-Fin v8 Optimized Scanner aktif (History Capped). Memuat {len(st.session_state.ledger)} riwayat."]
 if "is_running" not in st.session_state:
     st.session_state.is_running = False
+
+def add_log(msg):
+    st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] {msg}")
+    # Batasi maksimal 50 log di memori
+    if len(st.session_state.logs) > 50:
+        st.session_state.logs.pop()
 
 def update_balance(new_balance):
     st.session_state.balance = round(new_balance, 2)
     current_time = time.strftime("%H:%M:%S")
     st.session_state.balance_history.append({"time": current_time, "balance": st.session_state.balance})
+    # Batasi riwayat grafik maksimal 100 titik data
+    if len(st.session_state.balance_history) > 100:
+        st.session_state.balance_history = st.session_state.balance_history[-100:]
     save_json(HISTORY_FILE, st.session_state.balance_history)
 
 def calculate_technical_indicators(df):
@@ -104,16 +116,10 @@ def calculate_technical_indicators(df):
     }
 
 def scan_all_coins_market():
-    """
-    Memindai SEMUA koin/meme coin yang tersedia di bursa (USDT spot),
-    menerapkan filter anti-scam (likuiditas minimum, volume wajar),
-    lalu memilih kandidat paling potensial untuk dianalisis AI.
-    """
     try:
         exchange = ccxt.binance({'enableRateLimit': True})
         exchange.load_markets()
         
-        # Ambil seluruh pair USDT di bursa
         usdt_symbols = [s for s in exchange.symbols if s.endswith('/USDT') and ':' not in s]
         tickers = exchange.fetch_tickers(usdt_symbols)
         
@@ -123,10 +129,6 @@ def scan_all_coins_market():
             price = t.get('last', 0.0) or 0.0
             change_24h = t.get('percentage', 0.0) or 0.0
             
-            # ATURAN ANTI-SCAM:
-            # 1. Harga harus valid (> 0)
-            # 2. Volume minimal $50,000 dalam 24 jam (menyaring koin mati / scam tipis)
-            # 3. Spread/Aktivitas wajar
             if price > 0 and quote_vol >= 50000:
                 valid_candidates.append({
                     "symbol": symbol,
@@ -135,24 +137,19 @@ def scan_all_coins_market():
                     "volume": quote_vol
                 })
         
-        # Urutkan berdasarkan persentase perubahan atau volatilitas tertinggi (cocok untuk menangkap meme coin / altcoin yang sedang pump)
-        # Kita ambil kombinasi top volume & top gainers secara dinamis
         valid_candidates = sorted(valid_candidates, key=lambda x: abs(x['change_24h']), reverse=True)
-        
-        # Ambil sampel dinamis teratas (misal 15 koin paling aktif bergerak saat ini dari ratusan koin)
-        target_pool = valid_candidates[:15]
+        target_pool = valid_candidates[:12] # Ambil sampel 12 koin teraktif agar cepat & ringan
         
         scanned_data = []
         for item in target_pool:
             symbol = item['symbol']
             try:
-                ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=30)
-                if len(ohlcv) >= 20:
+                ohlcv = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=25)
+                if len(ohlcv) >= 15:
                     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                     tech = calculate_technical_indicators(df)
                     
-                    # Cek order book untuk mendeteksi whale walls / dinding palsu
-                    orderbook = exchange.fetch_order_book(symbol, limit=10)
+                    orderbook = exchange.fetch_order_book(symbol, limit=5)
                     bids_vol = sum([b[1] for b in orderbook['bids']])
                     asks_vol = sum([a[1] for a in orderbook['asks']])
                     whale_imbalance = round((bids_vol / (bids_vol + asks_vol)) * 100, 2) if (bids_vol + asks_vol) > 0 else 50.0
@@ -183,7 +180,7 @@ def scan_all_coins_market():
 # --- UI HEADER ---
 st.markdown("""
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e293b; padding-bottom: 15px; margin-bottom: 20px;">
-        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">⚡ ST-Fin v8 // Universal All-Coin & Anti-Scam Scalper</h2>
+        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">⚡ ST-Fin v8 // Optimized All-Coin Scalper</h2>
     </div>
 """, unsafe_allow_html=True)
 
@@ -192,7 +189,7 @@ m1, m2, m3 = st.columns(3)
 with m1:
     st.markdown(f"""
         <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
-            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Portofolio (Modal $10 Strict Protection)</div>
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Portofolio (Modal $10 Protected)</div>
             <div style="font-size: 22px; font-weight: bold; color: #38bdf8; margin-top: 5px;">${st.session_state.balance:.2f}</div>
         </div>
     """, unsafe_allow_html=True)
@@ -207,7 +204,7 @@ with m2:
 with m3:
     st.markdown(f"""
         <div style="background: #0f172a; border: 1px solid #1e293b; padding: 15px; border-radius: 8px;">
-            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Total Experiment Ledger (Lengkap)</div>
+            <div style="font-size: 11px; color: #64748b; text-transform: uppercase;">Ledger History (Max 100)</div>
             <div style="font-size: 22px; font-weight: bold; color: #f8fafc; margin-top: 5px;">{len(st.session_state.ledger)}</div>
         </div>
     """, unsafe_allow_html=True)
@@ -231,7 +228,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # --- KONTROL UTAMA ---
 col_ctrl1, col_ctrl2 = st.columns(2)
 with col_ctrl1:
-    if st.button("🚀 JALANKAN ALL-COIN SCANNER", use_container_width=True, type="primary", disabled=st.session_state.is_running):
+    if st.button("🚀 JALANKAN OPTIMIZED SCANNER", use_container_width=True, type="primary", disabled=st.session_state.is_running):
         st.session_state.is_running = True
         st.rerun()
 with col_ctrl2:
@@ -247,27 +244,27 @@ grid_left, grid_right = st.columns(2)
 with grid_left:
     st.markdown("""
         <div class="terminal-panel">
-            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">📊 Full Experiment Ledger (Semua Riwayat Tersimpan)</h3>
+            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">📊 Capped Experiment Ledger (Max 100 Terakhir)</h3>
         </div>
     """, unsafe_allow_html=True)
     if st.session_state.ledger:
-        st.dataframe(st.session_state.ledger, use_container_width=True, height=400)
+        st.dataframe(st.session_state.ledger, use_container_width=True, height=350)
     else:
         st.info("Belum ada data pembelajaran tercatat.")
 
 with grid_right:
     st.markdown("""
         <div class="terminal-panel">
-            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">💻 AI All-Coin & Anti-Scam Intelligence Feed</h3>
+            <h3 style="color: #93c5fd; font-size: 14px; margin-top: 0; border-bottom: 1px solid #1e293b; padding-bottom: 10px;">💻 AI Intelligence Feed (Max 50 Log)</h3>
         </div>
     """, unsafe_allow_html=True)
     
     log_text = "\n".join(st.session_state.logs)
     st.markdown(f'<div class="terminal-screen">{log_text}</div>', unsafe_allow_html=True)
 
-# --- SIKLUS OTONOM ALL-COIN & ANTI-SCAM ---
+# --- SIKLUS OTONOM OPTIMIZED ---
 if st.session_state.is_running:
-    st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [UNIVERSAL SCAN] Memindai SEMUA koin & meme coin di bursa, menyaring scam, dan mengevaluasi teknikal[cite: 1]...")
+    add_log("Memulai siklus pemindaian universal dan penyaringan anti-scam...")
     
     market_coins = scan_all_coins_market()
 
@@ -280,35 +277,28 @@ if st.session_state.is_running:
         whale_imb = item['whale_imbalance_pct']
         change = item['change_24h']
         
-        st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [CHECK] {symbol} | Change: {change}% | RSI: {tech['rsi']} | Whale Imbalance: {whale_imb}%")
+        add_log(f"Check {symbol} | Change: {change}% | RSI: {tech['rsi']} | Whale Imbalance: {whale_imb}%")
         
         decision = "SKIP"
-        reasoning = "Kandidat tidak lolos filter ketat anti-scam atau momentum geometri 1 menit belum matang."
+        reasoning = "Kandidat tidak lolos filter ketat anti-scam atau momentum 1m belum matang."
         
         if ai_client:
             prompt = f"""
-            Anda adalah inti kecerdasan buatan kuantitatif tingkat maksimal untuk sistem ST-Fin v8 (Smart Trader, Final Episode)[cite: 1].
-            Tugas utama Anda adalah memindai SEMUA jenis koin (termasuk meme coin dan altcoin volatil) secara universal, namun dengan FILTER ANTI-SCAM YANG KETAT guna melindungi modal mikro $10 pengguna agar tidak terbakar.
+            Anda adalah inti kecerdasan buatan kuantitatif untuk sistem ST-Fin v8.
+            Analisis koin universal dengan filter anti-scam yang ketat untuk melindungi modal $10:
+            - Pair: {symbol} | Harga: ${item['current_price']} | Change 24j: {change}% | Vol: ${item['recent_volume']:,.0f}
+            - Indikator 1m: RSI = {tech['rsi']}, EMA 9 = {tech['ema9']}, EMA 21 = {tech['ema21']}
+            - Whale Imbalance: {whale_imb}%
             
-            Data Pasar Koin Ini:
-            - Pair: {symbol}
-            - Harga: ${item['current_price']}
-            - Perubahan 24j: {change}%
-            - Volume 24j: ${item['recent_volume']:,.0f}
-            - Indikator Teknikal (1m): RSI = {tech['rsi']}, EMA 9 = {tech['ema9']}, EMA 21 = {tech['ema21']}
-            - Whale Footprint / Order Book Imbalance: {whale_imb}%
-            - Kerangka Geometri: ST-Fin v8 (Ceil angle & Normalize lens ON)[cite: 1]
+            Aturan:
+            - Berikan "LONG ENTRY" hanya jika tren bersih, RSI sehat (45-75), dan Whale Imbalance > 52%.
+            - Jika ragu atau potensi scam, wajibkan "SKIP".
             
-            Aturan Ketat Anti-Scam & Profit:
-            1. JANGAN PERNAH memilih koin yang memiliki indikasi manipulasi ekstrem, likuiditas meragukan, atau volume semu.
-            2. Hanya berikan keputusan "LONG ENTRY" jika koin tersebut (termasuk meme coin potensial) menunjukkan tren kenaikan struktur 1 menit yang bersih, RSI di zona sehat (45-75), dan Whale Imbalance mendukung (>52%).
-            3. Jika ada keraguan sedikit pun atau struktur mencurigakan (potensi rug pull/scam), wajibkan keputusan "SKIP".
-            
-            Respons HARUS berupa JSON murni tanpa teks tambahan:
+            Respons HARUS berupa JSON murni:
             {{
                 "decision": "LONG ENTRY" atau "SKIP",
                 "confidence": "Tinggi/Sedang",
-                "reasoning": "Analisis mendalam mengapa koin ini aman dari scam dan potensial profit..."
+                "reasoning": "Alasan singkat..."
             }}
             """
             try:
@@ -321,9 +311,9 @@ if st.session_state.is_running:
                 decision = res_json.get("decision", "SKIP")
                 reasoning = res_json.get("reasoning", reasoning)
             except Exception:
-                st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [WARNING] Batas API tercapai, mengaktifkan pengaman darurat.")
+                add_log("Warning: Batas API tercapai, mengaktifkan pengaman darurat.")
 
-        st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [AI VERDICT] {symbol} -> {decision} | {reasoning}")
+        add_log(f"Verdict {symbol} -> {decision} | {reasoning}")
 
         if decision == "LONG ENTRY" and st.session_state.balance >= 1.0:
             position_size = round(st.session_state.balance * 0.15, 2)
@@ -333,17 +323,22 @@ if st.session_state.is_running:
             trade_record = {
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "token": symbol,
-                "chain": "Universal All-Coin Network",
+                "chain": "Universal Optimized Network",
                 "entry_price": item['current_price'],
                 "size": position_size,
                 "status": "ACTIVE_PAPER_TRADE",
                 "reasoning": reasoning
             }
             st.session_state.ledger.append(trade_record)
+            
+            # Batasi ledger maksimal 100 riwayat agar file JSON tidak membengkak
+            if len(st.session_state.ledger) > 100:
+                st.session_state.ledger = st.session_state.ledger[-100:]
+                
             save_json(LEDGER_FILE, st.session_state.ledger)
-            st.session_state.logs.insert(0, f"[{time.strftime('%H:%M:%S')}] [LEDGER] Sinyal universal aman terekam permanen (Total Ledger: {len(st.session_state.ledger)})[cite: 1].")
+            add_log(f"Ledger: Posisi {symbol} tercatat (Total: {len(st.session_state.ledger)})")
 
-        time.sleep(1.2)
+        time.sleep(1.0)
     
     time.sleep(1)
     st.rerun()
